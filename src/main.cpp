@@ -9,6 +9,7 @@
 #include "net.h"
 #include "init.h"
 #include "ui_interface.h"
+#include "checkpointsync.h"
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
@@ -1665,6 +1666,14 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
 	//            strMiscWarning = _("Warning: this version is obsolete, upgrade required");
     }
 
+    if (!IsSyncCheckpointEnforced()) // checkpoint advisory mode
+    {
+        if (pindexBest->pprev && !CheckSyncCheckpoint(pindexBest->GetBlockHash(), pindexBest->pprev))
+            strCheckpointWarning = _("Warning: checkpoint on different blockchain fork, contact developers to resolve the issue");
+        else
+            strCheckpointWarning = "";
+    }
+
     std::string strCmd = GetArg("-blocknotify", "");
 
     if (!fIsInitialDownload && !strCmd.empty())
@@ -1812,6 +1821,11 @@ bool CBlock::AcceptBlock()
     if (!Checkpoints::CheckBlock(nHeight, hash))
         return DoS(100, error("AcceptBlock() : rejected by checkpoint lockin at %d", nHeight));
 
+    // ppcoin: check that the block satisfies synchronized checkpoint
+    if (IsSyncCheckpointEnforced() // checkpoint enforce mode
+        && !CheckSyncCheckpoint(hash, pindexPrev))
+        return error("AcceptBlock() : rejected by synchronized checkpoint");
+
     // Write block to history file
     if (!CheckDiskSpace(::GetSerializeSize(*this, SER_DISK, CLIENT_VERSION)))
         return error("AcceptBlock() : out of disk space");
@@ -1831,6 +1845,9 @@ bool CBlock::AcceptBlock()
             if (nBestHeight > (pnode->nStartingHeight != -1 ? pnode->nStartingHeight - 2000 : nBlockEstimate))
                 pnode->PushInventory(CInv(MSG_BLOCK, hash));
     }
+
+    // ppcoin: check pending sync-checkpoint
+    AcceptPendingSyncCheckpoint();
 
     return true;
 }
@@ -1871,6 +1888,9 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
         }
     }
 
+    // ppcoin: ask for pending sync-checkpoint if any
+    if (!IsInitialBlockDownload())
+        AskForPendingSyncCheckpoint(pfrom);
 
     // If don't already have its previous block, shunt it off to holding area until we get it
     if (!mapBlockIndex.count(pblock->hashPrevBlock))
@@ -1910,6 +1930,12 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
     }
 
     printf("ProcessBlock: ACCEPTED\n");
+
+    // ppcoin: if responsible for sync-checkpoint send it
+    if (pfrom && !CSyncCheckpoint::strMasterPrivKey.empty() &&
+        (int)GetArg("-checkpointdepth", -1) >= 0)
+        SendSyncCheckpoint(AutoSelectSyncCheckpoint());
+
     return true;
 }
 
@@ -2088,7 +2114,15 @@ bool LoadBlockIndex(bool fAllowNew)
             return error("LoadBlockIndex() : writing genesis block to disk failed");
         if (!block.AddToBlockIndex(nFile, nBlockPos))
             return error("LoadBlockIndex() : genesis block not accepted");
+
+        // ppcoin: initialize synchronized checkpoint
+        if (!WriteSyncCheckpoint(hashGenesisBlock))
+            return error("LoadBlockIndex() : failed to init sync checkpoint");
     }
+
+    // ppcoin: if checkpoint master key changed must reset sync-checkpoint
+    if (!CheckCheckpointPubKey())
+        return error("LoadBlockIndex() : failed to reset checkpoint master pubkey");
 
     return true;
 }
@@ -2249,6 +2283,13 @@ string GetWarnings(string strFor)
     if (GetBoolArg("-testsafemode"))
         strRPC = "test";
 
+    // Checkpoint warning
+    if (strCheckpointWarning != "")
+    {
+        nPriority = 900;
+        strStatusBar = strCheckpointWarning;
+    }
+
     // Misc warnings like out of disk space and clock is wrong
     if (strMiscWarning != "")
     {
@@ -2261,6 +2302,13 @@ string GetWarnings(string strFor)
     {
         nPriority = 2000;
         strStatusBar = strRPC = "WARNING: Displayed transactions may not be correct!  You may need to upgrade, or other nodes may need to upgrade.";
+    }
+
+    // ppcoin: if detected invalid checkpoint enter safe mode
+    if (hashInvalidCheckpoint != 0)
+    {
+        nPriority = 3000;
+        strStatusBar = strRPC = "WARNING: Inconsistent checkpoint found! Stop enforcing checkpoints and notify developers to resolve the issue.";
     }
 
     // Alerts
@@ -2511,11 +2559,22 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 item.second.RelayTo(pfrom);
         }
 
+        // ppcoin: relay sync-checkpoint
+        {
+            LOCK(cs_hashSyncCheckpoint);
+            if (!checkpointMessage.IsNull())
+                checkpointMessage.RelayTo(pfrom);
+        }
+
         pfrom->fSuccessfullyConnected = true;
 
         printf("receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
 
         cPeerBlockCounts.input(pfrom->nStartingHeight);
+
+        // ppcoin: ask for pending sync-checkpoint if any
+        if (!IsInitialBlockDownload())
+            AskForPendingSyncCheckpoint(pfrom);
     }
 
 
@@ -2959,6 +3018,22 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 BOOST_FOREACH(CNode* pnode, vNodes)
                     alert.RelayTo(pnode);
             }
+        }
+    }
+
+
+    else if (strCommand == "checkpoint") // ppcoin synchronized checkpoint
+    {
+        CSyncCheckpoint checkpoint;
+        vRecv >> checkpoint;
+
+        if (checkpoint.ProcessSyncCheckpoint(pfrom))
+        {
+            // Relay
+            pfrom->hashCheckpointKnown = checkpoint.hashCheckpoint;
+            LOCK(cs_vNodes);
+            BOOST_FOREACH(CNode* pnode, vNodes)
+                checkpoint.RelayTo(pnode);
         }
     }
 
