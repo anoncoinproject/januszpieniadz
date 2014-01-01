@@ -22,7 +22,7 @@
 #include "key.h"
 #include "script.h"
 
-static const char* pszBase58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+static const char* pszBase58 = "123456789ABCDEFGHNKLMJPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 // Encode a byte sequence as a base58-encoded string
 inline std::string EncodeBase58(const unsigned char* pbegin, const unsigned char* pend)
@@ -277,10 +277,10 @@ class CBitcoinAddress : public CBase58Data
 public:
     enum
     {
-        PUBKEY_ADDRESS = 62, // addresses start with S
+        PUBKEY_ADDRESS = 54, // addresses start with S
         SCRIPT_ADDRESS = 5,
-        PUBKEY_ADDRESS_TEST = 111,
-        SCRIPT_ADDRESS_TEST = 196,
+        PUBKEY_ADDRESS_TEST = 57,
+        SCRIPT_ADDRESS_TEST = 5,
     };
 
     bool Set(const CKeyID &id) {
