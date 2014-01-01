@@ -30,7 +30,7 @@ CTxMemPool mempool;
 unsigned int nTransactionsUpdated = 0;
 
 map<uint256, CBlockIndex*> mapBlockIndex;
-uint256 hashGenesisBlock("0x384b060671f4a93948e9c168216dadb0ca2fbc54aa11c86b0345b6af1c59b2f5");
+uint256 hashGenesisBlock("0x3a69179a4ab0a9324ecf915abfb717a14ac16a8479d8f8bf90c9e464526784b4");
 static CBigNum bnProofOfWorkLimit(~uint256(0) >> 20); // starting difficulty is 1 / 2^12
 CBlockIndex* pindexGenesisBlock = NULL;
 int nBestHeight = -1;
@@ -2049,7 +2049,7 @@ bool LoadBlockIndex(bool fAllowNew)
 	// vMerkleTree: 5a2e19825b
         
         // Genesis block
-        const char* pszTimestamp = "todo: replace with something that ensures no premining took place";
+        const char* pszTimestamp = "01.01.2014 karahen wlaczyl DNS-y. ps. tak bylo. ps2. sram hooyem";
         CTransaction txNew;
         txNew.vin.resize(1);
         txNew.vout.resize(1);
@@ -2061,21 +2061,21 @@ bool LoadBlockIndex(bool fAllowNew)
         block.hashPrevBlock = 0;
         block.hashMerkleRoot = block.BuildMerkleTree();
         block.nVersion = 1;
-        block.nTime    = 1366559428;
+        block.nTime    = 1388617671;
         block.nBits    = 0x1e0ffff0;
-        block.nNonce   = 2085386442;
+        block.nNonce   = 171765;
 
         if (fTestNet)
-        {
-            block.nTime    = 1366559428;
-            block.nNonce   = 386402991;
+        {   //testnet is not configured
+            block.nTime    = 1388617671;
+            block.nNonce   = 0;
         }
 
         //// debug print
         printf("%s\n", block.GetHash().ToString().c_str());
         printf("%s\n", hashGenesisBlock.ToString().c_str());
         printf("%s\n", block.hashMerkleRoot.ToString().c_str());
-        assert(block.hashMerkleRoot == uint256("0x5a2e19825b4162f68602039040f1e05d9f924ff00a3aff7327ca6abd6f3279bc"));
+        assert(block.hashMerkleRoot == uint256("0x09c9d98ca86aeff9f53d2763c5b8f2d6fc78b531ba4f22ebe80ea35e71ba24b6"));
 
         // If genesis block hash does not match, then generate new genesis hash.
         if (false && block.GetHash() != hashGenesisBlock)
