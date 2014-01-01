@@ -280,7 +280,7 @@ public:
         PUBKEY_ADDRESS = 54, // addresses start with S
         SCRIPT_ADDRESS = 5,
         PUBKEY_ADDRESS_TEST = 57,
-        SCRIPT_ADDRESS_TEST = 5,
+        SCRIPT_ADDRESS_TEST = 6,
     };
 
     bool Set(const CKeyID &id) {
